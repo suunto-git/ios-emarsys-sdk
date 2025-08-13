@@ -10,6 +10,7 @@
 @property(nonatomic, strong) MECompletionHandler completionHandler;
 @property(nonatomic, strong) WKWebView *webView;
 @property(nonatomic, strong) MEJSBridge *bridge;
+@property (nonatomic, assign) BOOL hasAlreadyHandledError;
 
 @end
 
@@ -72,9 +73,44 @@ didFinishNavigation:(null_unspecified WKNavigation *)navigation {
             weakSelf.completionHandler();
         });
     }
+
+    [webView evaluateJavaScript:@"document.body.innerText.trim().length"
+                  completionHandler:^(id _Nullable result, NSError * _Nullable error) {
+            if (error) {
+                return;
+            }
+
+            if ([result isKindOfClass:[NSNumber class]]) {
+                NSInteger length = [(NSNumber *)result integerValue];
+                if (length == 0) {
+                    [self handleWebViewLoadError:nil];
+                }
+            }
+        }];
 }
 
+- (void)webView:(WKWebView *)webView
+didFailProvisionalNavigation:(null_unspecified WKNavigation *)navigation
+       withError:(NSError *)error {
+    [self handleWebViewLoadError:error];
+}
+
+- (void)webView:(WKWebView *)webView
+didFailNavigation:(null_unspecified WKNavigation *)navigation
+      withError:(NSError *)error {
+    [self handleWebViewLoadError:error];
+}
 #pragma mark - Private methods
+
+- (void)handleWebViewLoadError:(NSError *)error {
+    if (self.hasAlreadyHandledError) return;
+    self.hasAlreadyHandledError = YES;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if ([self.loadErrorDelegate respondsToSelector:@selector(closeInAppWithCompletionHandler:)]) {
+            [self.loadErrorDelegate closeInAppWithCompletionHandler:nil];
+        }
+    });
+}
 
 - (WKWebView *)createWebView {
     __weak typeof(self) weakSelf = self;

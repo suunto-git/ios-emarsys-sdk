@@ -75,6 +75,20 @@
     }
 }
 
+- (BOOL)isHTMLStringValid:(NSString *)html {
+    if (html.length == 0) return NO;
+
+    NSString *trimmedHTML = [html stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (trimmedHTML.length == 0) return NO;
+
+    if ([trimmedHTML isEqualToString:@"null"] || [trimmedHTML isEqualToString:@"(null)"]) return NO;
+
+    if ([trimmedHTML rangeOfString:@"<html" options:NSCaseInsensitiveSearch].location == NSNotFound) return NO;
+    if ([trimmedHTML rangeOfString:@"</html>" options:NSCaseInsensitiveSearch].location == NSNotFound) return NO;
+
+    return YES;
+}
+
 - (void)handleInApp:(NSDictionary *)userInfo
               inApp:(NSDictionary *)inApp {
     NSDate *responseTimestamp = [self.timestampProvider provideTimestamp];
@@ -84,9 +98,10 @@
         [validate valueExistsForKey:@"campaign_id"
                            withType:[NSString class]];
     }];
-    if ([errors count] == 0) {
-        NSString *html = [[NSString alloc] initWithData:inApp[@"inAppData"]
-                                               encoding:NSUTF8StringEncoding];
+    NSString *html = [[NSString alloc] initWithData:inApp[@"inAppData"]
+                                             encoding:NSUTF8StringEncoding];
+      BOOL isHtmlValid = [self isHTMLStringValid:html];
+      if ([errors count] == 0 && isHtmlValid) {
         [self.meInApp showMessage:[[MEInAppMessage alloc] initWithCampaignId:inApp[@"campaign_id"]
                                                                        sid:[userInfo messageId]
                                                                        url:inApp[@"url"]

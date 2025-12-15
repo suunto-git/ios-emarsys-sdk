@@ -5,6 +5,39 @@
 #import "MEIAMViewController.h"
 #import "MEJSBridge.h"
 
+@interface EmarsysLogger : NSObject
++ (void)log:(NSString *) msg;
+@end
+
+@implementation EmarsysLogger
+
++ (void)log:(NSString *) msg {
+    NSLog(msg);
+    
+    NSString * cachesPath = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES)[0];
+    NSURL * url = [NSURL fileURLWithPath:cachesPath];
+    NSString * filename = @"Emarsys_log";
+    NSURL *fileURL = [[url URLByAppendingPathComponent:filename] URLByAppendingPathExtension:@"log"];
+    NSFileManager *fm = [NSFileManager defaultManager];
+    
+    if (![fm fileExistsAtPath:fileURL.path]) {
+        [fm createFileAtPath:fileURL.path contents:[NSData new] attributes:nil];
+    }
+    
+    NSFileHandle *fileHandle = [NSFileHandle fileHandleForWritingAtPath:fileURL.path];
+    [fileHandle seekToEndOfFile];
+    
+    NSData * shi = [@"\n" dataUsingEncoding:NSUTF8StringEncoding];
+    [fileHandle writeData:shi];
+    
+    NSDate * date = [[NSDate alloc] init];
+    NSString * log = [NSString stringWithFormat:@"%@ %@", date, msg];
+    
+    NSData * data = [log dataUsingEncoding:NSUTF8StringEncoding];
+    [fileHandle writeData:data];
+}
+@end
+
 @interface MEIAMViewController () <WKNavigationDelegate>
 
 @property(nonatomic, strong) MECompletionHandler completionHandler;
@@ -72,9 +105,37 @@ didFinishNavigation:(null_unspecified WKNavigation *)navigation {
             weakSelf.completionHandler();
         });
     }
+    NSString *jsCheckEmpty = @"(function() { var body = document.body; if (!body) return true; var temp = body.cloneNode(true); var removeTags = temp.querySelectorAll('script, style, noscript, iframe'); for (var i = 0; i < removeTags.length; i++) { removeTags[i].remove(); } var text = temp.innerText || temp.textContent || ''; return text.trim() === ''; })();";
+    __weak MEIAMViewController * weakSelf = self;
+    [webView evaluateJavaScript:jsCheckEmpty completionHandler:^(id _Nullable result, NSError * _Nullable error) {
+        if (error) {
+            [EmarsysLogger log:[NSString stringWithFormat:@"execute JavaScript error: %@", error.localizedDescription]];
+            return;
+        }
+        
+        if ([result isKindOfClass:[NSNumber class]]) {
+            BOOL isEmpty = [result boolValue];
+            if (isEmpty) {
+                [EmarsysLogger log:@"⚠️ The web page is detected to be empty."];
+                [weakSelf handleWebViewLoadError:nil];
+            } else {
+                [EmarsysLogger log:@"✅ The web page contains valid content."];
+            }
+        } else {
+            [EmarsysLogger log:[NSString stringWithFormat:@"JavaScript exception in return value type: %@", result]];
+        }
+    }];
 }
 
 #pragma mark - Private methods
+
+- (void)handleWebViewLoadError:(NSError *)error {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if ([self.loadErrorDelegate respondsToSelector:@selector(closeInAppWithCompletionHandler:)]) {
+            [self.loadErrorDelegate closeInAppWithCompletionHandler:nil];
+        }
+    });
+}
 
 - (WKWebView *)createWebView {
     __weak typeof(self) weakSelf = self;
@@ -94,6 +155,7 @@ didFinishNavigation:(null_unspecified WKNavigation *)navigation {
     [webView.scrollView setScrollEnabled:NO];
     [webView.scrollView setBounces:NO];
     [webView.scrollView setBouncesZoom:NO];
+    [webView setInspectable:true];
 
     webView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
     return webView;

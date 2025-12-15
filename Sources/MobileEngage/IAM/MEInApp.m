@@ -99,6 +99,7 @@
             weakSelf.iamWindow = [weakSelf.windowProvider provideWindow];
             weakSelf.currentInAppMessage = message;
             MEIAMViewController *meiamViewController = [weakSelf.iamViewControllerProvider provideViewController];
+            meiamViewController.loadErrorDelegate = self;
             [meiamViewController loadMessage:message.html
                            completionHandler:^{
                 if (message.response && weakSelf.timestampProvider) {
